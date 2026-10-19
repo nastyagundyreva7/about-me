@@ -1,1 +1,1 @@
-const s=document.createElement('script');s.src='app-prod.js';s.defer=true;document.head.appendChild(s);
+const s=document.createElement('script');s.src='supabase-loader.js';s.defer=true;document.head.appendChild(s);
