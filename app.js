@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://crpmabmarisoptxtszds.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'https://crpmabmarisoptxtszds.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_kE-zs8xcQfX3ojxbjzepzQ_PbZEWMM6';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
