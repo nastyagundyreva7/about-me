@@ -1,13 +1,6 @@
 let sb=null;let currentUser=null;let currentProfile=null;
-const productsFallback=[{id:1,title:'Сертификат в Vibes',description:'Сертификат для обмена в магазине привилегий',price_coins:300,category:'Сертификаты'},{id:2,title:'Футболка РУДН',description:'Базовый мерч RUDN Coins',price_coins:150,category:'Мини-мерч'},{id:3,title:'Картхолдер РУДН',description:'Базовый картхолдер с символикой РУДН',price_coins:105,category:'Мини-мерч'},{id:4,title:'Блокнот РУДН',description:'Базовый блокнот с символикой РУДН',price_coins:35,category:'Мини-мерч'}];
-const categoryImages={
-  'Научная':'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1200&q=80',
-  'Творческая':'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
-  'Спортивная':'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1200&q=80',
-  'Волонтёрство':'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=1200&q=80',
-  'Образовательная':'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1200&q=80',
-  'Общественная':'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1200&q=80'
-};
+const productsFallback=[{id:1,title:'Сертификат в Vibes',description:'Сертификат для обмена в магазине привилегий',price_coins:100,category:'Сертификаты'},{id:2,title:'Футболка РУДН',description:'Базовый мерч RUDN Coins',price_coins:200,category:'Мини-мерч'},{id:3,title:'Картхолдер РУДН',description:'Базовый картхолдер с символикой РУДН',price_coins:105,category:'Мини-мерч'},{id:4,title:'Блокнот РУДН',description:'Базовый блокнот с символикой РУДН',price_coins:35,category:'Мини-мерч'}];
+const categoryImages={'Научная':'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1200&q=80','Творческая':'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80','Спортивная':'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1200&q=80','Волонтёрство':'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=1200&q=80','Образовательная':'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1200&q=80','Общественная':'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1200&q=80'};
 function esc(v){return String(v??'').replace(/[&<>\"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[m]));}
 function show(id){document.querySelectorAll('.page').forEach(x=>x.classList.remove('show'));const p=document.getElementById(id);if(p)p.classList.add('show');window.scrollTo({top:0,behavior:'smooth'});if(id==='events')loadEvents();if(id==='privileges')loadProducts();if(id==='wallet')loadWallet();if(id==='profile')loadProfile();if(id==='admin')loadAdmin();}
 function msg(id,text,type='notice'){const e=document.getElementById(id);if(e)e.innerHTML=`<div class="notice ${type}">${esc(text)}</div>`;}
