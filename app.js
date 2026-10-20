@@ -71,7 +71,7 @@ async function registerStudent(event) {
   const password = String(data.get('password') || ''); if (password.length < 8) return toast('Пароль должен содержать минимум 8 символов.');
   const { data: result, error } = await supabase.auth.signUp({ email, password, options: { data: { last_name: String(data.get('last') || '').trim(), first_name: String(data.get('first') || '').trim(), middle_name: String(data.get('middle') || '').trim(), student_group: String(data.get('group') || '').trim() } } });
   if (error) return toast(error.message);
-  toast(result.session ? 'Аккаунт создан. Добро пожаловать в RUD Coins!' : 'Аккаунт создан. Проверь почту РУДН и подтверди регистрацию.', true);
+  toast(result.session ? 'Аккаунт создан. Добро пожаловать в RUD COIN!' : 'Аккаунт создан. Если Confirm email выключен, вход доступен сразу.', true);
   form.reset(); if (result.session) await refreshUser(); show('profile');
 }
 window.registerStudent = registerStudent;
@@ -142,8 +142,29 @@ async function renderAdminPanel(box) {
   if(error)html+=`<div class="empty">Не удалось загрузить регистрации: ${esc(error.message)}</div>`;
   else if(!regs?.length)html+='<div class="empty">Регистраций пока нет.</div>';
   else html+=regs.map(r=>`<div class="history"><div><b>${esc(r.profiles?.last_name||'')} ${esc(r.profiles?.first_name||'')}</b><br><small>${esc(r.profiles?.rudn_email||'')}</small><br>${esc(r.events?.title||'')}</div><span>${esc(r.status||'registered')}</span><button onclick="confirmAttendance(${Number(r.id)})" ${r.status==='attended'?'disabled':''}>${r.status==='attended'?'Подтверждено':'Подтвердить'}</button></div>`).join('');
-  html+='</div>'; box.insertAdjacentHTML('beforeend',html);
+  html+='</div>';
+
+  const { data: students, error: studentsError } = await supabase.from('profiles').select('id,first_name,last_name,middle_name,rudn_email,role').order('last_name', { ascending: true });
+  html += '<div class="section-head"><h2>Аккаунты студентов</h2><p class="small">Здесь можно задать новый пароль без письма на почту. Аккаунт и профиль не пересоздаются.</p></div><div class="admin">';
+  if (studentsError) html += `<div class="empty">Не удалось загрузить студентов: ${esc(studentsError.message)}</div>`;
+  else if (!students?.length) html += '<div class="empty">Студентов пока нет.</div>';
+  else html += students.filter(s => s.role !== 'admin').map(s => `<div class="history"><div><b>${esc([s.last_name,s.first_name,s.middle_name].filter(Boolean).join(' ') || 'Студент')}</b><br><small>${esc(s.rudn_email || '')}</small></div><button onclick="resetStudentPassword('${s.id}','${esc(s.rudn_email || '').replace(/'/g, '&#39;')}')">Сбросить пароль</button></div>`).join('');
+  html += '</div>';
+  box.insertAdjacentHTML('beforeend',html);
 }
+
+async function resetStudentPassword(userId, email) {
+  const first = prompt(`Новый пароль для ${email}:\nМинимум 8 символов.`);
+  if (first === null) return;
+  if (first.length < 8) return toast('Пароль должен содержать минимум 8 символов.');
+  const second = prompt('Повтори новый пароль:');
+  if (second === null) return;
+  if (first !== second) return toast('Пароли не совпадают.');
+  const { error } = await supabase.rpc('admin_reset_student_password', { p_user_id: userId, p_new_password: first });
+  if (error) return toast(error.message);
+  toast(`Пароль для ${email} изменён.`, true);
+}
+window.resetStudentPassword = resetStudentPassword;
 
 async function confirmAttendance(id) {
   const { data, error } = await supabase.rpc('confirm_event_attendance',{p_registration_id:id});
