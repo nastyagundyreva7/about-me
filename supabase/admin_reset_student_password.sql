@@ -1,5 +1,6 @@
 -- Выполнить один раз в Supabase SQL Editor.
--- Функция не создаёт новый аккаунт: меняет пароль существующего auth.users.
+-- Меняет пароль существующего Auth-пользователя без пересоздания аккаунта.
+-- Профиль, id, регистрации и RDC не затрагиваются.
 
 create extension if not exists pgcrypto with schema extensions;
 
@@ -17,6 +18,10 @@ as $$
 declare
   actor_role text;
 begin
+  if auth.uid() is null then
+    raise exception 'Требуется авторизация';
+  end if;
+
   select role into actor_role
   from public.profiles
   where id = auth.uid();
