@@ -1,0 +1,37 @@
+name: Fix student registration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix-student-registration]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch event registration ID handling
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app.js')
+          s=p.read_text()
+          old=re.search(r"async function registerEvent\(id\)\{.*?\n", s)
+          if not old:
+              raise SystemExit('registerEvent function not found')
+          new="""async function registerEvent(id){if(!currentUser){show('login');return;}let eventId=Number(id);let eventTitle=null;if(!Number.isFinite(eventId)||eventId<=0){alert('Не удалось определить мероприятие.');return;}const {data:dbEvent}=await sb.from('events').select('id,title').eq('id',eventId).maybeSingle();if(dbEvent){eventId=dbEvent.id;eventTitle=dbEvent.title;}else{const card=document.querySelector(`button[onclick=\\\"registerEvent(${eventId})\\\"]`);eventTitle=card?.closest('.event')?.querySelector('h3')?.textContent?.trim()||null;if(eventTitle){const {data:matches}=await sb.from('events').select('id,title').eq('title',eventTitle).limit(1);if(matches?.[0])eventId=matches[0].id;else{alert('Это мероприятие пока не добавлено в базу.');return;}}else{alert('Не удалось определить мероприятие.');return;}}const {error}=await sb.from('event_registrations').insert({student_id:currentUser.id,event_id:eventId});if(error){alert(error.code==='23505'?'Ты уже зарегистрирован(а) на это мероприятие.':error.message);return;}alert('Регистрация сохранена. После фактического участия администратор подтвердит начисление RDC.');}\n"""
+          s=s[:old.start()]+new+s[old.end():]
+          p.write_text(s)
+          PY
+      - name: Commit patched app.js
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix event registration foreign key error'
+          git push
