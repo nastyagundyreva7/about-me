@@ -1,106 +1,18 @@
 /* RUD COIN database transport. No Supabase Auth and no supabase-js. */
 (() => {
-  const URL = 'https://crpmabmarisoptxtszds.supabase.co';
-  const KEY = 'sb_publishable_kE-zs8xcQfX3ojxbjzepzQ_PbZEWMM6';
-
-  const headers = () => ({
-    apikey: KEY,
-    Authorization: `Bearer ${KEY}`,
-    'Content-Type': 'application/json',
-    Prefer: 'return=representation'
-  });
-
-  async function request(path, options = {}) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
-    try {
-      const response = await fetch(`${URL}${path}`, {
-        ...options,
-        signal: controller.signal,
-        headers: { ...headers(), ...(options.headers || {}) }
-      });
-      const text = await response.text();
-      let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
-      if (!response.ok) {
-        const error = new Error(data?.message || data?.msg || data?.hint || data?.details || data?.error || `Ошибка сервера (${response.status})`);
-        error.status = response.status;
-        error.code = data?.code;
-        throw error;
-      }
-      return data;
-    } finally { clearTimeout(timer); }
-  }
-
-  async function rudRpc(fn, args = {}) {
-    return request(`/rest/v1/rpc/${encodeURIComponent(fn)}`, {
-      method: 'POST',
-      body: JSON.stringify(args)
-    });
-  }
-  window.rudRpc = rudRpc;
-
-  function queryBuilder(table, mode = 'select', payload = null) {
-    const state = { table, mode, payload, columns: '*', filters: [], order: null, limit: null, single: false };
-    const builder = {
-      select(columns = '*') { state.columns = columns; return builder; },
-      eq(key, value) { state.filters.push([key, value]); return builder; },
-      order(column, opts = {}) { state.order = { column, ascending: opts.ascending !== false }; return builder; },
-      limit(n) { state.limit = Number(n); return builder; },
-      maybeSingle() { state.single = true; return builder; },
-      then(resolve, reject) {
-        (async () => {
-          try {
-            let data;
-            if (state.mode === 'insert') {
-              data = await request(`/rest/v1/${encodeURIComponent(state.table)}`, { method: 'POST', body: JSON.stringify(state.payload) });
-            } else {
-              const params = new URLSearchParams({ select: state.columns });
-              state.filters.forEach(([key, value]) => params.set(key, `eq.${String(value)}`));
-              if (state.order) params.set('order', `${state.order.column}.${state.order.ascending ? 'asc' : 'desc'}`);
-              if (state.limit != null) params.set('limit', String(state.limit));
-              data = await request(`/rest/v1/${encodeURIComponent(state.table)}?${params}`);
-            }
-            if (state.single) data = Array.isArray(data) ? (data[0] || null) : data;
-            resolve({ data, error: null });
-          } catch (error) { resolve({ data: null, error }); }
-        })();
-      }
-    };
-    return builder;
-  }
-
-  /* Compatibility object for the unchanged parts of the site. It never calls
-     Supabase Auth; its auth methods only read the RUD COIN custom session. */
-  const client = {
-    from(table) {
-      return {
-        select(columns = '*') { return queryBuilder(table, 'select').select(columns); },
-        insert(payload) { return queryBuilder(table, 'insert', payload); }
-      };
-    },
-    async rpc(fn, args = {}) {
-      try { return { data: await rudRpc(fn, args), error: null }; }
-      catch (error) { return { data: null, error }; }
-    },
-    auth: {
-      async getUser() {
-        const token = localStorage.getItem('rudcoins_custom_session_v1');
-        if (!token) return { data: { user: null }, error: null };
-        try {
-          const result = await rudRpc('rud_restore', { p_token: token });
-          const p = result?.profile;
-          return { data: { user: p ? { id: p.id, email: p.rudn_email || '', user_metadata: p } : null }, error: null };
-        } catch (error) { return { data: { user: null }, error }; }
-      },
-      async signOut() {
-        const token = localStorage.getItem('rudcoins_custom_session_v1');
-        if (token) { try { await rudRpc('rud_logout', { p_token: token }); } catch (_) {} }
-        localStorage.removeItem('rudcoins_custom_session_v1');
-        return { error: null };
-      },
-      onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; }
-    }
-  };
-  window.supabase = { createClient: () => client };
+  const URL='https://crpmabmarisoptxtszds.supabase.co';
+  const KEY='sb_publishable_kE-zs8xcQfX3ojxbjzepzQ_PbZEWMM6';
+  const TOKEN_KEY='rudcoins_custom_session_v2';
+  const headers=()=>({apikey:KEY,Authorization:`Bearer ${KEY}`,'Content-Type':'application/json',Prefer:'return=representation'});
+  async function request(path,options={}){const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);try{const r=await fetch(`${URL}${path}`,{...options,signal:c.signal,headers:{...headers(),...(options.headers||{})}});const text=await r.text();let d=null;try{d=text?JSON.parse(text):null}catch{d=text}if(!r.ok){const e=new Error(d?.message||d?.msg||d?.hint||d?.details||d?.error||`Ошибка сервера (${r.status})`);e.status=r.status;e.code=d?.code;throw e}return d}finally{clearTimeout(timer)}}
+  async function rudRpc(fn,args={}){return request(`/rest/v1/rpc/${encodeURIComponent(fn)}`,{method:'POST',body:JSON.stringify(args)})} window.rudRpc=rudRpc;
+  function queryBuilder(table,mode='select',payload=null){const s={table,mode,payload,columns:'*',filters:[],order:null,limit:null,single:false};const b={select(c='*'){s.columns=c;return b},eq(k,v){s.filters.push([k,v]);return b},order(c,o={}){s.order={c,ascending:o.ascending!==false};return b},limit(n){s.limit=Number(n);return b},maybeSingle(){s.single=true;return b},then(resolve){(async()=>{try{let d;if(s.mode==='insert')d=await request(`/rest/v1/${encodeURIComponent(s.table)}`,{method:'POST',body:JSON.stringify(s.payload)});else{const p=new URLSearchParams({select:s.columns});s.filters.forEach(([k,v])=>p.set(k,`eq.${v}`));if(s.order)p.set('order',`${s.order.c}.${s.order.ascending?'asc':'desc'}`);if(s.limit!=null)p.set('limit',String(s.limit));d=await request(`/rest/v1/${encodeURIComponent(s.table)}?${p}`)}if(s.single)d=Array.isArray(d)?d[0]||null:d;resolve({data:d,error:null})}catch(error){resolve({data:null,error})}})()}};return b}
+  const client={from(table){return{select(c='*'){return queryBuilder(table,'select').select(c)},insert(payload){return queryBuilder(table,'insert',payload)}}},rpc:async(fn,args={})=>{try{return{data:await rudRpc(fn,args),error:null}}catch(error){return{data:null,error}}},auth:{
+    async signUp({email,password,options={}}){try{const m=options.data||{},r=await rudRpc('rud_register',{p_email:String(email).toLowerCase(),p_password:password,p_last:m.last_name||'',p_first:m.first_name||'',p_middle:m.middle_name||'',p_group:m.student_group||''});localStorage.setItem(TOKEN_KEY,r.token);return{data:{user:{id:r.profile.id,email:r.profile.rudn_email,user_metadata:r.profile},session:{access_token:r.token}},error:null}}catch(error){return{data:{user:null},session:null,error}}},
+    async signInWithPassword({email,password}){try{const r=await rudRpc('rud_login',{p_email:String(email).toLowerCase(),p_password:password});localStorage.setItem(TOKEN_KEY,r.token);return{data:{user:{id:r.profile.id,email:r.profile.rudn_email,user_metadata:r.profile},session:{access_token:r.token}},error:null}}catch(error){return{data:{user:null},session:null,error}}},
+    async getUser(){const t=localStorage.getItem(TOKEN_KEY);if(!t)return{data:{user:null},error:null};try{const r=await rudRpc('rud_restore',{p_token:t});return{data:{user:r?.profile?{id:r.profile.id,email:r.profile.rudn_email,user_metadata:r.profile}:null},error:null}}catch(error){localStorage.removeItem(TOKEN_KEY);return{data:{user:null},error}}},
+    async signOut(){const t=localStorage.getItem(TOKEN_KEY);if(t)try{await rudRpc('rud_logout',{p_token:t})}catch{}localStorage.removeItem(TOKEN_KEY);return{error:null}},
+    setSession:async()=>({data:{session:null},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})
+  }};
+  window.supabase={createClient:()=>client};
 })();
