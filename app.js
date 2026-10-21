@@ -9,48 +9,25 @@ const rudRpc = async (fn, body = {}) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${encodeURIComponent(fn)}`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify(body),
-        cache: 'no-store',
-        signal: controller.signal
-      });
-      const text = await res.text();
-      let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-      if (!res.ok) {
-        const message = data?.message || data?.hint || data?.details || data?.error || text || `Ошибка сервера (${res.status})`;
-        const error = new Error(message);
-        error.status = res.status;
-        throw error;
-      }
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${encodeURIComponent(fn)}`, {method:'POST',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${SUPABASE_PUBLISHABLE_KEY}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body),cache:'no-store',signal:controller.signal});
+      const text = await res.text(); let data=null; try{data=text?JSON.parse(text):null}catch{data=null}
+      if(!res.ok){const message=data?.message||data?.hint||data?.details||data?.error||text||`Ошибка сервера (${res.status})`;const error=new Error(message);error.status=res.status;throw error}
       return data;
-    } catch (error) {
-      lastError = error;
-      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-    } finally {
-      clearTimeout(timer);
-    }
+    } catch(error){lastError=error;if(attempt<2)await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)))} finally{clearTimeout(timer)}
   }
-  if (lastError?.name === 'AbortError') throw new Error('Сервер авторизации не ответил за 15 секунд. Проверьте интернет и нажмите «Повторить».');
-  throw lastError || new Error('Не удалось связаться с сервером. Нажмите «Повторить».');
+  if(lastError?.name==='AbortError')throw new Error('Сервер авторизации не ответил за 15 секунд. Проверьте интернет и нажмите «Повторить».');
+  throw lastError||new Error('Не удалось связаться с сервером. Нажмите «Повторить».');
 };
-const sessionToken = () => localStorage.getItem(rudTokenKey) || '';
-const setSession = token => token ? localStorage.setItem(rudTokenKey, token) : localStorage.removeItem(rudTokenKey);
-
-let events = [], currentUser = null, currentProfile = null;
-const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const money = n => `${Number(n || 0)} RDC`;
-function toast(message, ok = false) { let box=document.getElementById('toast'); if(!box){box=document.createElement('div');box.id='toast';box.style.cssText='position:fixed;right:20px;bottom:20px;z-index:100;padding:14px 18px;border-radius:14px;background:#123b88;color:#fff;box-shadow:0 12px 35px #102a4a33;font-weight:700;max-width:420px';document.body.appendChild(box)} box.textContent=message;box.style.background=ok?'#16834a':'#123b88';clearTimeout(box._timer);box._timer=setTimeout(()=>box.remove(),4200); }
-function show(page){document.querySelectorAll('.page').forEach(el=>el.classList.remove('show'));document.getElementById(page)?.classList.add('show');document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.page===page));if(page==='wallet')loadWallet();if(page==='profile')loadProfile();if(page==='events')renderEvents();window.scrollTo({top:0,behavior:'smooth'})} window.show=show;
+const sessionToken=()=>localStorage.getItem(rudTokenKey)||'';
+const setSession=token=>token?localStorage.setItem(rudTokenKey,token):localStorage.removeItem(rudTokenKey);
+let events=[],currentUser=null,currentProfile=null;
+const esc=(value='')=>String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const money=n=>`${Number(n||0)} RDC`;
+function toast(message,ok=false){let box=document.getElementById('toast');if(!box){box=document.createElement('div');box.id='toast';box.style.cssText='position:fixed;right:20px;bottom:20px;z-index:100;padding:14px 18px;border-radius:14px;background:#123b88;color:#fff;box-shadow:0 12px 35px #102a4a33;font-weight:700;max-width:420px';document.body.appendChild(box)}box.textContent=message;box.style.background=ok?'#16834a':'#123b88';clearTimeout(box._timer);box._timer=setTimeout(()=>box.remove(),4200)}
+function show(page){document.querySelectorAll('.page').forEach(el=>el.classList.remove('show'));document.getElementById(page)?.classList.add('show');document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.page===page));if(page==='wallet')loadWallet();if(page==='profile')loadProfile();if(page==='events')renderEvents();window.scrollTo({top:0,behavior:'smooth'})}window.show=show;
 async function loadEvents(){try{const res=await fetch(`${SUPABASE_URL}/rest/v1/events?select=*&order=event_date.asc`,{cache:'no-store',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${SUPABASE_PUBLISHABLE_KEY}`}});const data=await res.json();events=res.ok&&Array.isArray(data)&&data.length?data:await(await fetch('events.json',{cache:'no-store'})).json()}catch(_){try{events=await(await fetch('events.json',{cache:'no-store'})).json()}catch(_){events=[]}}renderEvents()}
-function eventCard(e){const base=Number(e.base_coins??e.base??0),date=e.event_date?new Date(e.event_date).toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short'}):(e.date||'Дата уточняется'),location=e.location||'',topic=e.description||e.topic||'';return `<article class="event"><div class="visual"><span>🎓</span><b>+${base} RDC</b></div><div class="body"><span class="tag">${esc(e.category||'Мероприятие')}</span><h3>${esc(e.title)}</h3><p>${esc(topic||'Участвуй в мероприятии РУДН и получай RDC.')}</p><div class="meta">📅 ${esc(date)}${location?`<br>📍 ${esc(location)}`:''}</div><div class="earn"><span>Базовая награда<b>${base} RDC</b></span><span>Статус<b>Регистрация</b></span><span>Участие<b>Подтверждает админ</b></span></div><button onclick="registerForEvent(${Number(e.id)})">Зарегистрироваться</button></div></article>`}
+function eventEmoji(e){const category=String(e.category||'').toLowerCase();const title=String(e.title||'').toLowerCase();const topic=String(e.description||e.topic||'').toLowerCase();const text=`${category} ${title} ${topic}`;if(/спорт|физкульт|забег|велозаезд|универсиад/.test(text))return '🏃‍♀️';if(/творч|культур|искусств|концерт|театр|музык|день рождения/.test(text))return '🎨';if(/профес|карьер|бизнес|тренинг|мастер-класс|мастер класс|figma|сбер/.test(text))return '💼';if(/науч|образов|лекц|семинар|технолог|программист|цифров/.test(text))return '🎓';if(/волонт|обществен|благотвор/.test(text))return '🤝';return '✨'}
+function eventCard(e){const base=Number(e.base_coins??e.base??0),date=e.event_date?new Date(e.event_date).toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short'}):(e.date||'Дата уточняется'),location=e.location||'',topic=e.description||e.topic||'',emoji=eventEmoji(e);return `<article class="event"><div class="visual"><span>${emoji}</span><b>+${base} RDC</b></div><div class="body"><span class="tag">${esc(e.category||'Мероприятие')}</span><h3>${esc(e.title)}</h3><p>${esc(topic||'Участвуй в мероприятии РУДН и получай RDC.')}</p><div class="meta">📅 ${esc(date)}${location?`<br>📍 ${esc(location)}`:''}</div><div class="earn"><span>Базовая награда<b>${base} RDC</b></span><span>Статус<b>Регистрация</b></span><span>Участие<b>Подтверждает админ</b></span></div><button onclick="registerForEvent(${Number(e.id)})">Зарегистрироваться</button></div></article>`}
 function renderEvents(filter='Все'){const cats=['Все',...new Set(events.map(e=>e.category).filter(Boolean))],filters=document.getElementById('filters');if(filters)filters.innerHTML=cats.map(c=>`<button class="filter ${c===filter?'on':''}" onclick="renderEvents('${esc(c).replace(/'/g,"\\'")}')">${esc(c)}</button>`).join('');const list=filter==='Все'?events:events.filter(e=>e.category===filter),html=list.map(eventCard).join('')||'<div class="empty">Мероприятий пока нет.</div>';const all=document.getElementById('allEvents');if(all)all.innerHTML=html;const home=document.getElementById('homeEvents');if(home)home.innerHTML=events.slice(0,3).map(eventCard).join('')}window.renderEvents=renderEvents;
 function renderProducts(){const html=`<article class="product"><div class="prodimg vibes"><span>🎟️</span></div><span class="tag">Сертификат</span><h3>Сертификат в Vibes</h3><div class="pfoot"><b>100 RDC</b><button onclick="buy('Сертификат в Vibes')">Обменять</button></div></article><article class="product"><div class="prodimg shirt"><span>👕</span></div><span class="tag">Мини-мерч</span><h3>Футболка РУДН</h3><div class="pfoot"><b>200 RDC</b><button onclick="buy('Футболка РУДН')">Обменять</button></div></article><article class="product"><div class="prodimg card"><span>💳</span></div><span class="tag">Мини-мерч</span><h3>Картхолдер РУДН</h3><div class="pfoot"><b>70 RDC</b><button onclick="buy('Картхолдер РУДН')">Обменять</button></div></article><article class="product"><div class="prodimg notebook"><span>📓</span></div><span class="tag">Мини-мерч</span><h3>Блокнот РУДН</h3><div class="pfoot"><b>35 RDC</b><button onclick="buy('Блокнот РУДН')">Обменять</button></div></article>`;document.querySelectorAll('#products,#homeProducts').forEach(el=>el.innerHTML=html)}
 async function registerStudent(event){event.preventDefault();const form=event.currentTarget,data=new FormData(form),email=String(data.get('email')||'').trim().toLowerCase(),password=String(data.get('password')||'');if(!email.endsWith('@rudn.ru'))return toast('Используйте почту РУДН в формате name@rudn.ru');if(password.length<8)return toast('Пароль должен содержать минимум 8 символов.');try{const result=await rudRpc('rud_register',{p_email:email,p_password:password,p_last:String(data.get('last')||'').trim(),p_first:String(data.get('first')||'').trim(),p_middle:String(data.get('middle')||'').trim(),p_group:String(data.get('group')||'').trim()});if(!result?.token)throw new Error('Сервер не вернул сессию. Нажмите «Повторить».');setSession(result.token);await refreshUser();form.reset();toast('Аккаунт создан. Добро пожаловать в RUD COIN!',true);show('profile')}catch(e){toast(e.message||'Не удалось зарегистрироваться.')}}window.registerStudent=registerStudent;
