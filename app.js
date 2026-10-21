@@ -1,18 +1,45 @@
 const SUPABASE_URL = 'https://crpmabmarisoptxtszds.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_kE-zs8xcQfX3ojxbjzepzQ_PbZEWMM6';
+const rudTokenKey = 'rudcoins_custom_session_v2';
 
-// RUD COIN custom auth: no Supabase Auth SDK and no supabase.auth.* calls.
-const rudTokenKey = 'rudcoin_session';
-const rudRpc = async (fn, body) => {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {})
-  });
-  const text = await res.text();
-  let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-  if (!res.ok) throw new Error(data?.message || data?.hint || data?.details || text || `Ошибка сервера (${res.status})`);
-  return data;
+// Custom RUD COIN auth. Supabase Auth is not used.
+const rudRpc = async (fn, body = {}) => {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${encodeURIComponent(fn)}`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+      if (!res.ok) {
+        const message = data?.message || data?.hint || data?.details || data?.error || text || `Ошибка сервера (${res.status})`;
+        const error = new Error(message);
+        error.status = res.status;
+        throw error;
+      }
+      return data;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (lastError?.name === 'AbortError') throw new Error('Сервер авторизации не ответил за 15 секунд. Проверьте интернет и нажмите «Повторить».');
+  throw lastError || new Error('Не удалось связаться с сервером. Нажмите «Повторить».');
 };
 const sessionToken = () => localStorage.getItem(rudTokenKey) || '';
 const setSession = token => token ? localStorage.setItem(rudTokenKey, token) : localStorage.removeItem(rudTokenKey);
@@ -22,19 +49,19 @@ const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;'
 const money = n => `${Number(n || 0)} RDC`;
 function toast(message, ok = false) { let box=document.getElementById('toast'); if(!box){box=document.createElement('div');box.id='toast';box.style.cssText='position:fixed;right:20px;bottom:20px;z-index:100;padding:14px 18px;border-radius:14px;background:#123b88;color:#fff;box-shadow:0 12px 35px #102a4a33;font-weight:700;max-width:420px';document.body.appendChild(box)} box.textContent=message;box.style.background=ok?'#16834a':'#123b88';clearTimeout(box._timer);box._timer=setTimeout(()=>box.remove(),4200); }
 function show(page){document.querySelectorAll('.page').forEach(el=>el.classList.remove('show'));document.getElementById(page)?.classList.add('show');document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.page===page));if(page==='wallet')loadWallet();if(page==='profile')loadProfile();if(page==='events')renderEvents();window.scrollTo({top:0,behavior:'smooth'})} window.show=show;
-async function loadEvents(){try{const res=await fetch(`${SUPABASE_URL}/rest/v1/events?select=*&order=event_date.asc`,{headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${SUPABASE_PUBLISHABLE_KEY}`}});const data=await res.json();events=res.ok&&Array.isArray(data)&&data.length?data:await(await fetch('events.json',{cache:'no-store'})).json()}catch(_){try{events=await(await fetch('events.json',{cache:'no-store'})).json()}catch(_){events=[]}}renderEvents()}
+async function loadEvents(){try{const res=await fetch(`${SUPABASE_URL}/rest/v1/events?select=*&order=event_date.asc`,{cache:'no-store',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${SUPABASE_PUBLISHABLE_KEY}`}});const data=await res.json();events=res.ok&&Array.isArray(data)&&data.length?data:await(await fetch('events.json',{cache:'no-store'})).json()}catch(_){try{events=await(await fetch('events.json',{cache:'no-store'})).json()}catch(_){events=[]}}renderEvents()}
 function eventCard(e){const base=Number(e.base_coins??e.base??0),date=e.event_date?new Date(e.event_date).toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short'}):(e.date||'Дата уточняется'),location=e.location||'',topic=e.description||e.topic||'';return `<article class="event"><div class="visual"><span>🎓</span><b>+${base} RDC</b></div><div class="body"><span class="tag">${esc(e.category||'Мероприятие')}</span><h3>${esc(e.title)}</h3><p>${esc(topic||'Участвуй в мероприятии РУДН и получай RDC.')}</p><div class="meta">📅 ${esc(date)}${location?`<br>📍 ${esc(location)}`:''}</div><div class="earn"><span>Базовая награда<b>${base} RDC</b></span><span>Статус<b>Регистрация</b></span><span>Участие<b>Подтверждает админ</b></span></div><button onclick="registerForEvent(${Number(e.id)})">Зарегистрироваться</button></div></article>`}
 function renderEvents(filter='Все'){const cats=['Все',...new Set(events.map(e=>e.category).filter(Boolean))],filters=document.getElementById('filters');if(filters)filters.innerHTML=cats.map(c=>`<button class="filter ${c===filter?'on':''}" onclick="renderEvents('${esc(c).replace(/'/g,"\\'")}')">${esc(c)}</button>`).join('');const list=filter==='Все'?events:events.filter(e=>e.category===filter),html=list.map(eventCard).join('')||'<div class="empty">Мероприятий пока нет.</div>';const all=document.getElementById('allEvents');if(all)all.innerHTML=html;const home=document.getElementById('homeEvents');if(home)home.innerHTML=events.slice(0,3).map(eventCard).join('')}window.renderEvents=renderEvents;
 function renderProducts(){const html=`<article class="product"><div class="prodimg vibes"><span>🎟️</span></div><span class="tag">Сертификат</span><h3>Сертификат в Vibes</h3><div class="pfoot"><b>100 RDC</b><button onclick="buy('Сертификат в Vibes')">Обменять</button></div></article><article class="product"><div class="prodimg shirt"><span>👕</span></div><span class="tag">Мини-мерч</span><h3>Футболка РУДН</h3><div class="pfoot"><b>200 RDC</b><button onclick="buy('Футболка РУДН')">Обменять</button></div></article><article class="product"><div class="prodimg card"><span>💳</span></div><span class="tag">Мини-мерч</span><h3>Картхолдер РУДН</h3><div class="pfoot"><b>70 RDC</b><button onclick="buy('Картхолдер РУДН')">Обменять</button></div></article><article class="product"><div class="prodimg notebook"><span>📓</span></div><span class="tag">Мини-мерч</span><h3>Блокнот РУДН</h3><div class="pfoot"><b>35 RDC</b><button onclick="buy('Блокнот РУДН')">Обменять</button></div></article>`;document.querySelectorAll('#products,#homeProducts').forEach(el=>el.innerHTML=html)}
-async function registerStudent(event){event.preventDefault();const form=event.currentTarget,data=new FormData(form),email=String(data.get('email')||'').trim().toLowerCase(),password=String(data.get('password')||'');if(!email.endsWith('@rudn.ru'))return toast('Используйте почту РУДН в формате name@rudn.ru');if(password.length<8)return toast('Пароль должен содержать минимум 8 символов.');try{const result=await rudRpc('rud_register',{p_email:email,p_password:password,p_last:String(data.get('last')||'').trim(),p_first:String(data.get('first')||'').trim(),p_middle:String(data.get('middle')||'').trim(),p_group:String(data.get('group')||'').trim()});setSession(result.token);await refreshUser();form.reset();toast('Аккаунт создан. Добро пожаловать в RUD COIN!',true);show('profile')}catch(e){toast(e.message||'Не удалось зарегистрироваться.')}}window.registerStudent=registerStudent;
-async function demoLogin(){const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;if(!email||!password)return toast('Введите почту и пароль.');try{const result=await rudRpc('rud_login',{p_email:email,p_password:password});setSession(result.token);await refreshUser();toast('Вход выполнен.',true);show('profile')}catch(e){toast(e.message||'Не удалось войти.')}}window.demoLogin=demoLogin;
+async function registerStudent(event){event.preventDefault();const form=event.currentTarget,data=new FormData(form),email=String(data.get('email')||'').trim().toLowerCase(),password=String(data.get('password')||'');if(!email.endsWith('@rudn.ru'))return toast('Используйте почту РУДН в формате name@rudn.ru');if(password.length<8)return toast('Пароль должен содержать минимум 8 символов.');try{const result=await rudRpc('rud_register',{p_email:email,p_password:password,p_last:String(data.get('last')||'').trim(),p_first:String(data.get('first')||'').trim(),p_middle:String(data.get('middle')||'').trim(),p_group:String(data.get('group')||'').trim()});if(!result?.token)throw new Error('Сервер не вернул сессию. Нажмите «Повторить».');setSession(result.token);await refreshUser();form.reset();toast('Аккаунт создан. Добро пожаловать в RUD COIN!',true);show('profile')}catch(e){toast(e.message||'Не удалось зарегистрироваться.')}}window.registerStudent=registerStudent;
+async function demoLogin(event){event.preventDefault();const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;if(!email||!password)return toast('Введите почту и пароль.');try{const result=await rudRpc('rud_login',{p_email:email,p_password:password});if(!result?.token)throw new Error('Сервер не вернул сессию. Нажмите «Повторить».');setSession(result.token);await refreshUser();toast('Вход выполнен.',true);show('profile')}catch(e){toast(e.message||'Не удалось войти.')}}window.demoLogin=demoLogin;
 async function refreshUser(){currentUser=null;currentProfile=null;const token=sessionToken();if(!token){updateHeader();return}try{const result=await rudRpc('rud_restore',{p_token:token});if(!result?.profile){setSession('');updateHeader();return}currentProfile=result.profile;currentUser={id:currentProfile.id,email:currentProfile.rudn_email};updateHeader()}catch(e){setSession('');updateHeader();toast(e.message||'Не удалось восстановить сессию.')}}
 function updateHeader(){const actions=document.querySelector('.actions');if(!actions)return;actions.innerHTML=currentUser?`<button class="outline" onclick="show('wallet')">${esc(currentProfile?.coins??0)} RDC</button><button onclick="logout()">Выйти</button>`:'<button class="outline" onclick="show(\'login\')">Войти</button><button onclick="show(\'register\')">Регистрация</button>'}
 async function logout(){const token=sessionToken();if(token)try{await rudRpc('rud_logout',{p_token:token})}catch(_){}setSession('');currentUser=null;currentProfile=null;updateHeader();toast('Вы вышли из аккаунта.',true);show('home')}window.logout=logout;
 async function registerForEvent(eventId){if(!currentUser){toast('Сначала войдите в аккаунт.');return show('login')}try{await rudRpc('rud_register_event',{p_token:sessionToken(),p_event_id:Number(eventId)});toast('Регистрация на мероприятие сохранена.',true);loadWallet()}catch(e){toast(e.message)}}window.registerForEvent=registerForEvent;
-async function buy(title){if(!currentUser){toast('Сначала войдите в аккаунт.');return show('login')}try{const res=await fetch(`${SUPABASE_URL}/rest/v1/privileges?select=id,title,price_coins,available&available=eq.true`,{headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${SUPABASE_PUBLISHABLE_KEY}`}}),privileges=await res.json(),found=privileges?.find(p=>p.title===title);if(!found)return toast(`«${title}» ещё не заведено в таблице privileges.`);const result=await rudRpc('request_redemption',{p_privilege_id:found.id});if(result===null||result===undefined){}toast(`Заявка на «${title}» создана.`,true);await loadWallet();show('wallet')}catch(e){toast(e.message)}}window.buy=buy;
+async function buy(title){if(!currentUser){toast('Сначала войдите в аккаунт.');return show('login')}try{const res=await fetch(`${SUPABASE_URL}/rest/v1/privileges?select=id,title,price_coins,available&available=eq.true`,{cache:'no-store',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:`Bearer ${SUPABASE_PUBLISHABLE_KEY}`}}),privileges=await res.json(),found=privileges?.find(p=>p.title===title);if(!found)return toast(`«${title}» ещё не заведено в таблице privileges.`);await rudRpc('request_redemption',{p_privilege_id:found.id,p_token:sessionToken()});toast(`Заявка на «${title}» создана.`,true);await loadWallet();show('wallet')}catch(e){toast(e.message)}}window.buy=buy;
 async function loadWallet(){if(!currentUser){const b=document.getElementById('balance');if(b)b.textContent='0 RDC';const r=document.getElementById('myRegs');if(r)r.innerHTML='<div class="empty">Войдите, чтобы увидеть кошелёк.</div>';return}try{const result=await rudRpc('rud_wallet',{p_token:sessionToken()}),profile=result.profile||{};currentProfile=profile;const b=document.getElementById('balance');if(b)b.textContent=money(profile.coins);updateHeader();const regs=result.registrations||[],regBox=document.getElementById('myRegs');if(regBox)regBox.innerHTML=regs.map(r=>`<div class="history"><b>${esc(r.events?.title||'Мероприятие')}</b><span>${esc(r.status||'registered')}</span><small>${r.coins_awarded?'+'+r.coins_awarded+' RDC':'Ожидает подтверждения'}</small></div>`).join('')||'<div class="empty">Регистраций пока нет.</div>';const history=result.history||[],hbox=document.getElementById('history');if(hbox)hbox.innerHTML=history.map(x=>`<div class="history"><b>${esc(x.description||x.transaction_type||'Операция')}</b><span>${x.amount>0?'+':''}${x.amount} RDC</span><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div>`).join('')||'<div class="empty">Операций пока нет.</div>'}catch(e){toast(e.message)}}
 async function loadProfile(){const box=document.getElementById('profileBox');if(!box)return;if(!currentUser){box.innerHTML='<div class="profileCard"><div><h3>Вы не вошли</h3><p>Войдите или зарегистрируйтесь, чтобы открыть профиль.</p><button onclick="show(\'login\')">Войти</button></div></div>';return}const p=currentProfile||{},name=[p.last_name,p.first_name,p.middle_name].filter(Boolean).join(' ')||currentUser.email;box.innerHTML=`<div class="profileCard"><div class="avatar">${esc((p.first_name||currentUser.email||'R').slice(0,1).toUpperCase())}</div><div><span class="tag">${p.role==='admin'?'Администратор':'Студент'}</span><h3>${esc(name)}</h3><p class="small">${esc(currentUser.email||'')}</p><p>Группа: <b>${esc(p.student_group||'—')}</b></p><p>Баланс: <b>${money(p.coins)}</b></p></div></div>`;if(p.role==='admin')await renderAdminPanel(box)}
 async function renderAdminPanel(box){let html='<div class="section-head"><h2>Админ-панель</h2></div><div class="admin"><div class="empty">Админ-операции доступны после подключения существующих RPC.</div></div>';box.insertAdjacentHTML('beforeend',html)}
-async function confirmAttendance(id){try{const result=await rudRpc('confirm_event_attendance',{p_registration_id:id});toast(`Участие подтверждено. Начислено ${result} RDC.`,true);await refreshUser();show('profile')}catch(e){toast(e.message)}}window.confirmAttendance=confirmAttendance;
+async function confirmAttendance(id){try{const result=await rudRpc('confirm_event_attendance',{p_registration_id:id,p_token:sessionToken()});toast(`Участие подтверждено. Начислено ${result} RDC.`,true);await refreshUser();show('profile')}catch(e){toast(e.message)}}window.confirmAttendance=confirmAttendance;
 (async function init(){renderProducts();await loadEvents();await refreshUser();show('home')})();
