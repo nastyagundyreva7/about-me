@@ -1,7 +1,11 @@
 function adminRpc(fn, body={}){ return rudRpc(fn,body); }
 function adminEsc(v=''){ return esc(v); }
-
+function syncAdminNav(){
+  const n=document.getElementById('adminNav');
+  if(n) n.classList.toggle('hidden',!(currentUser && currentProfile?.role==='admin'));
+}
 async function loadAdmin(){
+  syncAdminNav();
   const page=document.getElementById('admin');
   if(!page) return;
   if(!currentUser || currentProfile?.role!=='admin'){
@@ -62,3 +66,6 @@ window.show=function(page){
   originalShow(page);
   if(page==='admin') setTimeout(loadAdmin,0);
 };
+
+syncAdminNav();
+setInterval(syncAdminNav,1000);
