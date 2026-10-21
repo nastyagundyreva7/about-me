@@ -1,0 +1,20 @@
+/* Mobile auth/layout improvements; existing desktop design is unchanged. */
+.linkButton{background:transparent!important;border:0!important;color:#123b88!important;padding:8px 0!important;font-weight:700;cursor:pointer;text-decoration:underline}
+button:disabled{opacity:.65;cursor:wait}
+@media (max-width:700px){
+  .top{position:sticky;top:0;z-index:20;flex-wrap:wrap;gap:10px}
+  .brand{font-size:18px}
+  .nav{order:3;width:100%;overflow-x:auto;display:flex;gap:14px;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .nav a{white-space:nowrap}
+  .actions{margin-left:auto;display:flex;gap:7px}
+  .actions button{padding:9px 12px;font-size:13px}
+  .wrap{padding-left:16px;padding-right:16px}
+  .hero{padding:34px 16px 24px!important;display:block!important}
+  .hero-art{display:none!important}
+  .grid2{grid-template-columns:1fr!important}
+  .form{width:100%;max-width:none}
+  .field input,.field select,.field textarea{font-size:16px;min-height:46px}
+  .form button[type=submit],.event button,.product button{min-height:46px}
+  .wallet{padding:22px!important}
+  .balance{font-size:38px!important}
+}
