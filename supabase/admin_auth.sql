@@ -1,116 +1,79 @@
 -- RUD COIN admin API for the custom session system.
 -- Run once in Supabase SQL Editor after custom_auth.sql.
+-- This version does NOT depend on a legacy confirm_event_attendance() function.
 
 create or replace function public.rud_admin_id(p_token text)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
+returns uuid language plpgsql security definer set search_path = public as $$
 declare v_id uuid;
 begin
-  select p.id into v_id
-  from public.rud_auth_sessions s
-  join public.profiles p on p.id = s.profile_id
-  where s.token = p_token
-    and s.expires_at > now()
-    and p.role = 'admin';
+  select p.id into v_id from public.rud_auth_sessions s join public.profiles p on p.id=s.profile_id
+  where s.token=p_token and s.expires_at>now() and p.role='admin';
   if v_id is null then raise exception 'Доступ запрещён. Нужны права администратора.'; end if;
   return v_id;
-end;
-$$;
+end; $$;
 
 create or replace function public.rud_admin_stats(p_token text)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
+returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_admin uuid; v_users bigint; v_events bigint; v_regs bigint; v_coins bigint;
 begin
-  v_admin := public.rud_admin_id(p_token);
-  select count(*) into v_users from public.profiles where role <> 'admin' or role is null;
+  v_admin:=public.rud_admin_id(p_token);
+  select count(*) into v_users from public.profiles where role<>'admin' or role is null;
   select count(*) into v_events from public.events;
   select count(*) into v_regs from public.event_registrations;
   select coalesce(sum(coins),0) into v_coins from public.profiles;
   return jsonb_build_object('users',v_users,'events',v_events,'registrations',v_regs,'coins',v_coins);
-end;
-$$;
+end; $$;
 
 create or replace function public.rud_admin_users(p_token text)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
+returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_admin uuid; v_rows jsonb;
 begin
-  v_admin := public.rud_admin_id(p_token);
-  select coalesce(jsonb_agg(to_jsonb(x) order by x.last_name, x.first_name),'[]'::jsonb)
-    into v_rows
+  v_admin:=public.rud_admin_id(p_token);
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.last_name,x.first_name),'[]'::jsonb) into v_rows
   from (select id,last_name,first_name,middle_name,student_group,rudn_email,role,coins from public.profiles) x;
   return v_rows;
-end;
-$$;
+end; $$;
 
 create or replace function public.rud_admin_registrations(p_token text)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
+returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_admin uuid; v_rows jsonb;
 begin
-  v_admin := public.rud_admin_id(p_token);
+  v_admin:=public.rud_admin_id(p_token);
   select coalesce(jsonb_agg(jsonb_build_object(
     'id',r.id,'status',r.status,'coins_awarded',r.coins_awarded,'registered_at',r.registered_at,
     'student',jsonb_build_object('id',p.id,'name',concat_ws(' ',p.last_name,p.first_name,p.middle_name),'email',p.rudn_email,'group',p.student_group),
     'event',jsonb_build_object('id',e.id,'title',e.title,'event_date',e.event_date,'base_coins',e.base_coins)
-  ) order by r.registered_at desc),'[]'::jsonb)
-  into v_rows
-  from public.event_registrations r
-  left join public.profiles p on p.id=r.student_id
-  left join public.events e on e.id=r.event_id;
+  ) order by r.registered_at desc),'[]'::jsonb) into v_rows
+  from public.event_registrations r left join public.profiles p on p.id=r.student_id left join public.events e on e.id=r.event_id;
   return v_rows;
-end;
-$$;
+end; $$;
 
-create or replace function public.rud_admin_create_event(
-  p_token text,p_title text,p_date date,p_category text,p_level text,p_coins integer,p_location text,p_description text
-) returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
+create or replace function public.rud_admin_create_event(p_token text,p_title text,p_date date,p_category text,p_level text,p_coins integer,p_location text,p_description text)
+returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_admin uuid; v_event public.events%rowtype;
 begin
-  v_admin := public.rud_admin_id(p_token);
+  v_admin:=public.rud_admin_id(p_token);
   if trim(coalesce(p_title,''))='' then raise exception 'Укажите название мероприятия.'; end if;
-  if p_coins < 1 or p_coins > 20 then raise exception 'Базовая награда должна быть от 1 до 20 RDC.'; end if;
+  if p_coins<1 or p_coins>20 then raise exception 'Базовая награда должна быть от 1 до 20 RDC.'; end if;
   insert into public.events(title,event_date,category,event_level,base_coins,location,description)
-  values(trim(p_title),p_date,trim(p_category),trim(p_level),p_coins,trim(coalesce(p_location,'')),trim(coalesce(p_description,'')))
-  returning * into v_event;
+  values(trim(p_title),p_date,trim(p_category),trim(p_level),p_coins,trim(coalesce(p_location,'')),trim(coalesce(p_description,''))) returning * into v_event;
   return to_jsonb(v_event);
-end;
-$$;
+end; $$;
 
 create or replace function public.rud_admin_confirm_attendance(p_token text,p_registration_id bigint)
-returns integer
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare v_admin uuid; v_amount integer;
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_admin uuid; v_student uuid; v_amount integer; v_status text;
 begin
-  v_admin := public.rud_admin_id(p_token);
-  select coalesce(e.base_coins,0) into v_amount
+  v_admin:=public.rud_admin_id(p_token);
+  select r.student_id,coalesce(e.base_coins,0),r.status into v_student,v_amount,v_status
   from public.event_registrations r join public.events e on e.id=r.event_id
-  where r.id=p_registration_id;
-  if v_amount is null then raise exception 'Регистрация не найдена.'; end if;
-  -- Use the existing project RPC when available so the established awarding rules remain intact.
-  return public.confirm_event_attendance(p_registration_id,p_token);
-end;
-$$;
+  where r.id=p_registration_id for update;
+  if v_student is null then raise exception 'Регистрация не найдена.'; end if;
+  if v_status in ('attended','confirmed','completed') then raise exception 'Присутствие уже подтверждено.'; end if;
+  update public.event_registrations set status='attended',coins_awarded=v_amount where id=p_registration_id;
+  update public.profiles set coins=coalesce(coins,0)+v_amount where id=v_student;
+  return v_amount;
+end; $$;
 
 revoke all on function public.rud_admin_stats(text) from public,authenticated;
 revoke all on function public.rud_admin_users(text) from public,authenticated;
