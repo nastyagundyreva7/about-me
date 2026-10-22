@@ -1,6 +1,11 @@
 -- RUD COIN admin API for the custom session system.
 -- Run once in Supabase SQL Editor after custom_auth.sql.
--- This version does NOT depend on a legacy confirm_event_attendance() function.
+-- Registration rewards are separate from attendance rewards.
+
+alter table public.event_registrations
+  add column if not exists registration_reward_status text not null default 'pending';
+alter table public.event_registrations
+  add column if not exists registration_coins_awarded integer not null default 0;
 
 create or replace function public.rud_admin_id(p_token text)
 returns uuid language plpgsql security definer set search_path = public as $$
@@ -40,7 +45,9 @@ declare v_admin uuid; v_rows jsonb;
 begin
   v_admin:=public.rud_admin_id(p_token);
   select coalesce(jsonb_agg(jsonb_build_object(
-    'id',r.id,'status',r.status,'coins_awarded',r.coins_awarded,'registered_at',r.registered_at,
+    'id',r.id,'status',r.status,'coins_awarded',r.coins_awarded,
+    'registration_reward_status',r.registration_reward_status,'registration_coins_awarded',r.registration_coins_awarded,
+    'registered_at',r.registered_at,
     'student',jsonb_build_object('id',p.id,'name',concat_ws(' ',p.last_name,p.first_name,p.middle_name),'email',p.rudn_email,'group',p.student_group),
     'event',jsonb_build_object('id',e.id,'title',e.title,'event_date',e.event_date,'base_coins',e.base_coins)
   ) order by r.registered_at desc),'[]'::jsonb) into v_rows
@@ -58,6 +65,37 @@ begin
   insert into public.events(title,event_date,category,event_level,base_coins,location,description)
   values(trim(p_title),p_date,trim(p_category),trim(p_level),p_coins,trim(coalesce(p_location,'')),trim(coalesce(p_description,''))) returning * into v_event;
   return to_jsonb(v_event);
+end; $$;
+
+create or replace function public.rud_admin_approve_registration_reward(p_token text,p_registration_id bigint,p_amount integer)
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_admin uuid; v_student uuid; v_status text; v_amount integer;
+begin
+  v_admin:=public.rud_admin_id(p_token);
+  if p_amount is null or p_amount<1 or p_amount>1000 then raise exception 'Количество RDC должно быть от 1 до 1000.'; end if;
+  select student_id,registration_reward_status into v_student,v_status
+  from public.event_registrations where id=p_registration_id for update;
+  if v_student is null then raise exception 'Регистрация не найдена.'; end if;
+  if v_status='approved' then raise exception 'Коины за регистрацию уже начислены.'; end if;
+  if v_status='rejected' then raise exception 'Начисление за регистрацию уже отклонено.'; end if;
+  v_amount:=p_amount;
+  update public.event_registrations
+    set registration_reward_status='approved',registration_coins_awarded=v_amount
+    where id=p_registration_id;
+  update public.profiles set coins=coalesce(coins,0)+v_amount where id=v_student;
+  return v_amount;
+end; $$;
+
+create or replace function public.rud_admin_reject_registration_reward(p_token text,p_registration_id bigint)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_admin uuid; v_status text;
+begin
+  v_admin:=public.rud_admin_id(p_token);
+  select registration_reward_status into v_status from public.event_registrations where id=p_registration_id for update;
+  if not found then raise exception 'Регистрация не найдена.'; end if;
+  if v_status='approved' then raise exception 'Нельзя отклонить уже начисленные коины.'; end if;
+  update public.event_registrations set registration_reward_status='rejected',registration_coins_awarded=0 where id=p_registration_id;
+  return true;
 end; $$;
 
 create or replace function public.rud_admin_confirm_attendance(p_token text,p_registration_id bigint)
@@ -79,9 +117,13 @@ revoke all on function public.rud_admin_stats(text) from public,authenticated;
 revoke all on function public.rud_admin_users(text) from public,authenticated;
 revoke all on function public.rud_admin_registrations(text) from public,authenticated;
 revoke all on function public.rud_admin_create_event(text,text,date,text,text,integer,text,text) from public,authenticated;
+revoke all on function public.rud_admin_approve_registration_reward(text,bigint,integer) from public,authenticated;
+revoke all on function public.rud_admin_reject_registration_reward(text,bigint) from public,authenticated;
 revoke all on function public.rud_admin_confirm_attendance(text,bigint) from public,authenticated;
 grant execute on function public.rud_admin_stats(text) to anon;
 grant execute on function public.rud_admin_users(text) to anon;
 grant execute on function public.rud_admin_registrations(text) to anon;
 grant execute on function public.rud_admin_create_event(text,text,date,text,text,integer,text,text) to anon;
+grant execute on function public.rud_admin_approve_registration_reward(text,bigint,integer) to anon;
+grant execute on function public.rud_admin_reject_registration_reward(text,bigint) to anon;
 grant execute on function public.rud_admin_confirm_attendance(text,bigint) to anon;
