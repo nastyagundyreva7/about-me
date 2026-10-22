@@ -1,6 +1,5 @@
 -- RUD COIN custom authentication migration.
--- This file is intended to be executed once in Supabase SQL Editor.
--- It creates the application session tables and RPC API without exposing them directly.
+-- Run this file once in Supabase SQL Editor. It is safe to re-run.
 create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists public.rud_auth_accounts (
@@ -29,12 +28,25 @@ revoke all on public.rud_auth_sessions from anon, authenticated;
 create or replace function public.rud_register(
   p_email text, p_password text, p_last text, p_first text, p_middle text, p_group text
 ) returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare v_email text := lower(trim(p_email)); v_id uuid; v_token text; v_hash text; v_profile public.profiles%rowtype;
+declare
+  v_email text := lower(trim(p_email));
+  v_id uuid;
+  v_token text;
+  v_hash text;
+  v_profile public.profiles%rowtype;
 begin
-  if v_email !~ '^[^[:space:]@]+@rudn\\.ru$' then raise exception 'Используйте почту РУДН в формате name@rudn.ru'; end if;
+  -- PostgreSQL dollar-quoted strings do not consume backslashes, so the regex
+  -- must contain a single backslash before the dot.
+  if v_email !~ '^[^[:space:]@]+@rudn\.ru$' then
+    raise exception 'Используйте почту РУДН в формате name@rudn.ru';
+  end if;
   if length(p_password) < 8 then raise exception 'Пароль должен содержать минимум 8 символов'; end if;
-  if trim(coalesce(p_last,''))='' or trim(coalesce(p_first,''))='' or trim(coalesce(p_group,''))='' then raise exception 'Заполните фамилию, имя и группу'; end if;
-  if exists(select 1 from public.rud_auth_accounts where email=v_email) then raise exception 'Аккаунт с этой почтой уже зарегистрирован. Войдите в него.'; end if;
+  if trim(coalesce(p_last,''))='' or trim(coalesce(p_first,''))='' or trim(coalesce(p_group,''))='' then
+    raise exception 'Заполните фамилию, имя и группу';
+  end if;
+  if exists(select 1 from public.rud_auth_accounts where email=v_email) then
+    raise exception 'Аккаунт с этой почтой уже зарегистрирован. Войдите в него.';
+  end if;
   v_id := gen_random_uuid();
   v_hash := extensions.crypt(p_password, extensions.gen_salt('bf'));
   insert into public.profiles(id,last_name,first_name,middle_name,student_group,rudn_email,role,coins)
